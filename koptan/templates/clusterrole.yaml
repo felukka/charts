@@ -1,0 +1,100 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+  labels:
+    app.kubernetes.io/name: koptan
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - koptan.felukka.sh
+    resources:
+      - dotnetapps
+      - goapps
+      - javaapps
+      - slipways
+      - voyages
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - koptan.felukka.sh
+    resources:
+      - dotnetapps/finalizers
+      - goapps/finalizers
+      - javaapps/finalizers
+      - slipways/finalizers
+      - voyages/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - koptan.felukka.sh
+    resources:
+      - dotnetapps/status
+      - goapps/status
+      - javaapps/status
+      - slipways/status
+      - voyages/status
+    verbs:
+      - get
+      - patch
+      - update
