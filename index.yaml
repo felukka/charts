@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  koptan:
+  - apiVersion: v2
+    appVersion: 1.16.0
+    created: "2026-03-18T22:58:45.906512749+02:00"
+    description: A Helm chart for Kubernetes
+    digest: 5838ae26d4b7f80de0755a530da6b3acf2d166ff7156374d99da81e67bfbb83b
+    name: koptan
+    type: application
+    urls:
+    - https://charts.felukka.org/koptan-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-03-18T22:58:45.905552425+02:00"
