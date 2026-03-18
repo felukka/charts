@@ -7,7 +7,7 @@ replicaCount: 1
 
 controller:
   image:
-    repository: controller
+    repository: ghcr.io/felukka/koptan
     tag: ""
     pullPolicy: IfNotPresent
 
