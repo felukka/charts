@@ -1,26 +1,5 @@
 1. Get the application URL by running these commands:
-{{- $httpRoute := .Values.httpRoute | default dict }}
-{{- $ingress := .Values.ingress | default dict }}
-{{- if $httpRoute.enabled }}
-{{- if $httpRoute.hostnames }}
-  export APP_HOSTNAME={{ $httpRoute.hostnames | first }}
-{{- else }}
-  export APP_HOSTNAME=$(kubectl get --namespace {{(first $httpRoute.parentRefs).namespace | default .Release.Namespace }} gateway/{{ (first $httpRoute.parentRefs).name }} -o jsonpath="{.spec.listeners[0].hostname}")
-  {{- end }}
-{{- if and $httpRoute.rules (first $httpRoute.rules).matches (first (first $httpRoute.rules).matches).path.value }}
-  echo "Visit http://$APP_HOSTNAME{{ (first (first $httpRoute.rules).matches).path.value }} to use your application"
-
-    NOTE: Your HTTPRoute depends on the listener configuration of your gateway and your HTTPRoute rules.
-    The rules can be set for path, method, header and query parameters.
-    You can check the gateway configuration with 'kubectl get --namespace {{(first $httpRoute.parentRefs).namespace | default .Release.Namespace }} gateway/{{ (first $httpRoute.parentRefs).name }} -o yaml'
-{{- end }}
-{{- else if $ingress.enabled }}
-{{- range $host := $ingress.hosts }}
-  {{- range .paths }}
-  http{{ if $ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
-  {{- end }}
-{{- end }}
-{{- else if contains "NodePort" .Values.service.type }}
+{{- if contains "NodePort" .Values.service.type }}
   export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "koptan.fullname" . }})
   export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
   echo http://$NODE_IP:$NODE_PORT
