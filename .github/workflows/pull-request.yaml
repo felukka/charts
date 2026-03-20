@@ -79,7 +79,7 @@ jobs:
           fi
   helm-validate:
     name: Helm Validate
-    needs: check-multiple-chart-changes
+    needs: [check-multiple-chart-changes, check-title]
     if: needs.check-multiple-chart-changes.outputs.changed == 'true'
     runs-on: ubuntu-24.04
     permissions:
