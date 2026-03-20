@@ -77,3 +77,35 @@ jobs:
             echo "PR title must start with '[${CHART_NAME}] '." >&2
             exit 1
           fi
+  helm-validate:
+    name: Helm Validate
+    needs: [check-multiple-chart-changes, check-title]
+    if: needs.check-multiple-chart-changes.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Run helm lint
+        env:
+          CHANGED_LIST: ${{ needs.check-multiple-chart-changes.outputs.changed_list }}
+        run: |
+          for chart in $CHANGED_LIST; do
+            echo "Linting $chart"
+            helm lint "$chart"
+          done
+
+      - name: Run helm install (dry-run)
+        env:
+          CHANGED_LIST: ${{ needs.check-multiple-chart-changes.outputs.changed_list }}
+        run: |
+          for chart in $CHANGED_LIST; do
+            echo "Validating install for $chart"
+            helm install test-release "$chart" --dry-run=client --debug
+          done

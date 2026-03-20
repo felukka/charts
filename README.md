@@ -1,3 +1,8 @@
-# charts
+# Felukka Helm Charts
 
-https://charts.felukka.org
+## Add Repository
+
+```bash
+helm repo add felukka https://charts.felukka.org
+helm repo update
+```
