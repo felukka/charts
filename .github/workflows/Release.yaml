@@ -1,15 +1,16 @@
 name: Release Charts
+permissions: {}
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'koptan/**'
+      - 'charts/**'
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -19,13 +20,14 @@ jobs:
 
       - name: Lint Charts
         run: |
-          helm lint koptan
+          helm lint charts/koptan
 
   release:
     needs: lint
     permissions:
       contents: write # Needed to create releases
-    runs-on: ubuntu-latest
+      packages: write # Needed to push charts to GHCR
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -43,7 +45,7 @@ jobs:
       - name: Setup Chart Release Directory
         run: |
           mkdir -p .chart-release
-          helm package koptan --destination .chart-release/
+          helm package charts/koptan --destination .chart-release/
 
       - name: Generate Repository Index
         run: helm repo index .chart-release/ --url https://charts.felukka.org
@@ -58,7 +60,7 @@ jobs:
       - name: Push charts to GHCR
         run: |
           shopt -s nullglob
-          for pkg in .cr-release-packages/*.tgz; do
+          for pkg in .chart-release/*.tgz; do
             if [ -z "${pkg:-}" ]; then
               break
             fi

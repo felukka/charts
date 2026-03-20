@@ -1,0 +1,79 @@
+name: Pull Request
+permissions: {}
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, reopened, synchronize, edited]
+    paths:
+      - 'charts/**'
+
+jobs:
+  check-multiple-chart-changes:
+    name: Check Multiple Chart Changes
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.detect.outputs.changed }}
+      changed_list: ${{ steps.detect.outputs.changed_list }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect changed charts
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          CHANGED="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- 'charts/**' | awk -F/ 'NF>=2 {print $1"/"$2}' | sort -u)"
+
+          if [[ -n "$CHANGED" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "changed_list=${CHANGED//$'\n'/ }" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "changed_list=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check for multiple chart changes
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          CHANGED_LIST: ${{ steps.detect.outputs.changed_list }}
+        run: |
+          COUNT=$(echo "$CHANGED_LIST" | wc -w)
+          if [ "$COUNT" -gt 1 ]; then
+            echo "Error: ($COUNT) charts changed. Please create separate PRs for each chart." >&2
+            exit 1
+          fi
+
+  check-title:
+    name: Check Title
+    needs: check-multiple-chart-changes
+    if: needs.check-multiple-chart-changes.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Validate PR title format
+        env:
+          CHANGED_LIST: ${{ needs.check-multiple-chart-changes.outputs.changed_list }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          CHART_PATH="${CHANGED_LIST%% *}"
+          CHART_NAME="${CHART_PATH##*/}"
+
+          if [[ -z "$CHART_NAME" ]]; then
+            echo "Error: Could not derive chart name from '$CHANGED_LIST'." >&2
+            exit 1
+          fi
+
+          if [[ "$PR_TITLE" != "[${CHART_NAME}] "* ]]; then
+            echo "PR title must start with '[${CHART_NAME}] '." >&2
+            exit 1
+          fi
