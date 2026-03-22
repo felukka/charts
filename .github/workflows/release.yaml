@@ -63,7 +63,7 @@ jobs:
         run: helm repo index .chart-release/ --url https://charts.felukka.org
       - name: Prepare Pages directory
         run: |
-          cp README.md .chart-release/index.md
+          cp README.md .chart-release/
           echo "charts.felukka.org" > .chart-release/CNAME
       - name: Setup Pages
         uses: actions/configure-pages@v4
