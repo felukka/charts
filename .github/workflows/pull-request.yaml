@@ -1,111 +1,75 @@
+---
 name: Pull Request
-permissions: {}
-
 on:
   pull_request:
     branches:
       - main
-    types: [opened, reopened, synchronize, edited]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
     paths:
-      - 'charts/**'
-
+      - charts/**
+permissions:
+  contents: read
+  pull-requests: read
 jobs:
-  check-multiple-chart-changes:
-    name: Check Multiple Chart Changes
+  validate-metadata:
+    name: Validate PR Metadata
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
     outputs:
-      changed: ${{ steps.detect.outputs.changed }}
-      changed_list: ${{ steps.detect.outputs.changed_list }}
+      changed_chart: ${{ steps.detect.outputs.changed_chart }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Detect changed charts
+      - name: Detect Changes and Validate Title
         id: detect
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          CHANGED="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- 'charts/**' | awk -F/ 'NF>=2 {print $1"/"$2}' | sort -u)"
-
-          if [[ -n "$CHANGED" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "changed_list=${CHANGED//$'\n'/ }" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "changed_list=" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Check for multiple chart changes
-        if: steps.detect.outputs.changed == 'true'
-        env:
-          CHANGED_LIST: ${{ steps.detect.outputs.changed_list }}
-        run: |
-          COUNT=$(echo "$CHANGED_LIST" | wc -w)
-          if [ "$COUNT" -gt 1 ]; then
-            echo "Error: ($COUNT) charts changed. Please create separate PRs for each chart." >&2
-            exit 1
-          fi
-
-  check-title:
-    name: Check Title
-    needs: check-multiple-chart-changes
-    if: needs.check-multiple-chart-changes.outputs.changed == 'true'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    steps:
-      - name: Validate PR title format
-        env:
-          CHANGED_LIST: ${{ needs.check-multiple-chart-changes.outputs.changed_list }}
+          BASE_REF: ${{ github.base_ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          CHART_PATH="${CHANGED_LIST%% *}"
-          CHART_NAME="${CHART_PATH##*/}"
-
-          if [[ -z "$CHART_NAME" ]]; then
-            echo "Error: Could not derive chart name from '$CHANGED_LIST'." >&2
+          CHANGED_FILES=$(git diff --name-only origin/$BASE_REF HEAD | grep '^charts/' || true)
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No charts changed."
+            exit 0
+          fi
+          CHANGED_CHARTS=$(echo "$CHANGED_FILES" | cut -d'/' -f1,2 | sort -u)
+          CHART_COUNT=$(echo "$CHANGED_CHARTS" | wc -w)
+          if [ "$CHART_COUNT" -gt 1 ]; then
+            echo "::error::Multiple charts changed ($CHART_COUNT). Please create separate PRs for each chart."
+            echo "Changed charts: $CHANGED_CHARTS"
             exit 1
           fi
-
-          if [[ "$PR_TITLE" != "[${CHART_NAME}] "* ]]; then
-            echo "PR title must start with '[${CHART_NAME}] '." >&2
+          CHART_PATH="$CHANGED_CHARTS"
+          CHART_NAME=$(basename "$CHART_PATH")
+          if [[ "${PR_TITLE#\[$CHART_NAME\] }" == "$PR_TITLE" ]]; then
+            echo "::error::PR title must start with '[$CHART_NAME] '."
             exit 1
           fi
+          echo "changed_chart=$CHART_PATH" >> "$GITHUB_OUTPUT"
   helm-validate:
     name: Helm Validate
-    needs: [check-multiple-chart-changes, check-title]
-    if: needs.check-multiple-chart-changes.outputs.changed == 'true'
+    needs: validate-metadata
+    if: needs.validate-metadata.outputs.changed_chart != ''
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
-
+        uses: actions/checkout@v4
       - name: Install Helm
         uses: azure/setup-helm@v4
-
       - name: Run helm lint
         env:
-          CHANGED_LIST: ${{ needs.check-multiple-chart-changes.outputs.changed_list }}
+          CHART_PATH: ${{ needs.validate-metadata.outputs.changed_chart }}
         run: |
-          for chart in $CHANGED_LIST; do
-            echo "Linting $chart"
-            helm lint "$chart"
-          done
-
+          echo "Linting $CHART_PATH"
+          helm lint "$CHART_PATH"
       - name: Run helm install (dry-run)
         env:
-          CHANGED_LIST: ${{ needs.check-multiple-chart-changes.outputs.changed_list }}
-        run: |
-          for chart in $CHANGED_LIST; do
-            echo "Validating install for $chart"
-            helm install test-release "$chart" --dry-run=client --debug
-          done
+          CHART_PATH: ${{ needs.validate-metadata.outputs.changed_chart }}
+        run: |-
+          echo "Validating install for $CHART_PATH"
+          helm install test-release "$CHART_PATH" --dry-run=client --debug

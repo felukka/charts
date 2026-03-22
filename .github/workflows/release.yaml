@@ -1,0 +1,86 @@
+---
+name: Release Charts
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - charts/**
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+      - name: Lint Charts
+        run: |
+          for dir in charts/*; do
+            if [ -d "$dir" ]; then
+              helm lint "$dir"
+            fi
+          done
+  release:
+    needs: lint
+    permissions:
+      contents: read
+      packages: write
+      pages: write
+      id-token: write
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup Chart Release Directory
+        run: |
+          mkdir -p .chart-release
+          for dir in charts/*; do
+            if [ -d "$dir" ]; then
+              helm package "$dir" --destination .chart-release/
+            fi
+          done
+      - name: Push charts to GHCR
+        run: |
+          shopt -s nullglob
+          for pkg in .chart-release/*.tgz; do
+            if [ -z "${pkg:-}" ]; then
+              break
+            fi
+            helm push "${pkg}" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}"
+          done
+      - name: Generate Repository Index
+        run: helm repo index .chart-release/ --url https://charts.felukka.org
+      - name: Prepare Pages directory
+        run: |
+          cp README.md .chart-release/index.md
+          echo "charts.felukka.org" > .chart-release/CNAME
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .chart-release
+  deploy:
+    needs: release
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
