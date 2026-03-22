@@ -60,3 +60,7 @@ volumeMounts: []
 nodeSelector: {}
 tolerations: []
 affinity: {}
+webhook:
+  enabled: false
+certManager:
+  enabled: false
