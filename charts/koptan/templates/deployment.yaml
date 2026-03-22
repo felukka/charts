@@ -34,6 +34,11 @@ spec:
         - name: http
           containerPort: 8080
           protocol: TCP
+        {{- if .Values.webhook.enabled }}
+        - name: webhook-server
+          containerPort: 9443
+          protocol: TCP
+        {{- end }}
         resources:
           limits:
             cpu: 500m
@@ -59,4 +64,15 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-      volumes: []
+        {{- if .Values.webhook.enabled }}
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: webhook-certs
+          readOnly: true
+        {{- end }}
+      volumes:
+      {{- if .Values.webhook.enabled }}
+      - name: webhook-certs
+        secret:
+          secretName: webhook-server-cert
+      {{- end }}
