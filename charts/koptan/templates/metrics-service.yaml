@@ -1,0 +1,17 @@
+{{- if and .Values.metrics.secure .Values.certManager.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "koptan.fullname" . }}-metrics-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "koptan.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: https
+      port: {{ .Values.metrics.port }}
+      protocol: TCP
+      targetPort: {{ .Values.metrics.port }}
+  selector:
+    {{- include "koptan.selectorLabels" . | nindent 4 }}
+{{- end }}
