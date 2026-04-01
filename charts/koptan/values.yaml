@@ -60,3 +60,15 @@ volumeMounts: []
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+webhook:
+  enabled: false
+
+certManager:
+  # Requires cert-manager CRDs to be installed in the cluster.
+  # See https://cert-manager.io/docs/installation/
+  enabled: false
+
+metrics:
+  secure: false
+  port: 8443

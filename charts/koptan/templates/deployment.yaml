@@ -1,3 +1,5 @@
+{{- $webhookCerts := and .Values.webhook.enabled .Values.certManager.enabled }}
+{{- $metricsCerts := and .Values.metrics.secure .Values.certManager.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,12 +30,31 @@ spec:
         args:
         - --leader-elect
         - --health-probe-bind-address=:8081
+        {{- if .Values.metrics.secure }}
+        - --metrics-bind-address=:{{ .Values.metrics.port }}
+        {{- end }}
+        {{- if $webhookCerts }}
+        - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+        {{- end }}
+        {{- if $metricsCerts }}
+        - --metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs
+        {{- end }}
         image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
         ports:
         - name: http
           containerPort: 8080
           protocol: TCP
+        {{- if .Values.webhook.enabled }}
+        - name: webhook-server
+          containerPort: 9443
+          protocol: TCP
+        {{- end }}
+        {{- if .Values.metrics.secure }}
+        - name: metrics
+          containerPort: {{ .Values.metrics.port }}
+          protocol: TCP
+        {{- end }}
         resources:
           limits:
             cpu: 500m
@@ -59,4 +80,37 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-      volumes: []
+        {{- if or $webhookCerts $metricsCerts }}
+        volumeMounts:
+          {{- if $webhookCerts }}
+          - mountPath: /tmp/k8s-webhook-server/serving-certs
+            name: webhook-certs
+            readOnly: true
+          {{- end }}
+          {{- if $metricsCerts }}
+          - mountPath: /tmp/k8s-metrics-server/metrics-certs
+            name: metrics-certs
+            readOnly: true
+          {{- end }}
+        {{- end }}
+      {{- if or $webhookCerts $metricsCerts }}
+      volumes:
+        {{- if $webhookCerts }}
+        - name: webhook-certs
+          secret:
+            secretName: webhook-server-cert
+        {{- end }}
+        {{- if $metricsCerts }}
+        - name: metrics-certs
+          secret:
+            secretName: metrics-server-cert
+            optional: false
+            items:
+              - key: ca.crt
+                path: ca.crt
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        {{- end }}
+      {{- end }}

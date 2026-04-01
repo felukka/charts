@@ -1,0 +1,38 @@
+{{- if .Values.certManager.enabled }}
+{{- if .Values.webhook.enabled }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "koptan.fullname" . }}-serving-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "koptan.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ include "koptan.fullname" . }}-webhook-service.{{ .Release.Namespace }}.svc
+    - {{ include "koptan.fullname" . }}-webhook-service.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ include "koptan.fullname" . }}-selfsigned-issuer
+  secretName: webhook-server-cert
+{{- end }}
+{{- if .Values.metrics.secure }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "koptan.fullname" . }}-metrics-certs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "koptan.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ include "koptan.fullname" . }}-metrics-service.{{ .Release.Namespace }}.svc
+    - {{ include "koptan.fullname" . }}-metrics-service.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ include "koptan.fullname" . }}-selfsigned-issuer
+  secretName: metrics-server-cert
+{{- end }}
+{{- end }}
