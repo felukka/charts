@@ -1,0 +1,120 @@
+{{- $pg := .Values.database.postgres }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "koptan-ui.fullname" . }}
+  labels:
+    {{- include "koptan-ui.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "koptan-ui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "koptan-ui.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "koptan-ui.serviceAccountName" . }}
+      # The image runs as the named user "node"; Kubernetes needs the uid to check runAsNonRoot.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: backstage
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - node
+        - packages/backend
+        - --config
+        - app-config.yaml
+        - --config
+        - /etc/koptan-ui/app-config.chart.yaml
+        {{- if .Values.appConfig }}
+        - --config
+        - /etc/koptan-ui/app-config.extra.yaml
+        {{- end }}
+        env:
+        - name: KOPTAN_AGENT_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.agentKey.secret.name }}
+              key: {{ .Values.agentKey.secret.key }}
+              optional: true
+        {{- if $pg.enabled }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ required "database.postgres.existingSecret is required" $pg.existingSecret }}
+              key: {{ $pg.passwordKey }}
+        {{- end }}
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        ports:
+        - name: http
+          containerPort: 7007
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /.backstage/health/v1/liveness
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /.backstage/health/v1/readiness
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: app-config
+          mountPath: /etc/koptan-ui
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: app-config
+        configMap:
+          name: {{ include "koptan-ui.fullname" . }}-app-config
+      - name: tmp
+        emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

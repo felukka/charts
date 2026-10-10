@@ -23,4 +23,5 @@ helm search repo felukka
 
 ## Available Charts
 
-* [**Koptan**](./charts/koptan/README.md) - Description of the Koptan chart.
+* [**Koptan**](./charts/koptan/README.md) - The Koptan operator: CI/CD, CI plugins, alerts and AI self-service on Kubernetes.
+* [**Koptan UI**](./charts/koptan-ui/README.md) - The Backstage UI for Koptan.

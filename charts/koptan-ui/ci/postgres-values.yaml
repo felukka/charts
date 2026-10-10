@@ -1,0 +1,8 @@
+database:
+  postgres:
+    enabled: true
+    host: postgres.koptan-system.svc
+    existingSecret: koptan-ui-postgres
+appConfig:
+  auth:
+    environment: production

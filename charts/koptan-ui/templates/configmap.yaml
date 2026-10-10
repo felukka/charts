@@ -1,0 +1,57 @@
+{{- $pg := .Values.database.postgres }}
+{{- if and $pg.enabled (not $pg.host) }}
+{{- fail "database.postgres.host is required when database.postgres.enabled is true" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "koptan-ui.fullname" . }}-app-config
+  labels:
+    {{- include "koptan-ui.labels" . | nindent 4 }}
+data:
+  app-config.chart.yaml: |
+    app:
+      baseUrl: {{ .Values.baseUrl }}
+    backend:
+      baseUrl: {{ .Values.baseUrl }}
+      listen:
+        port: 7007
+      cors:
+        origin: {{ .Values.baseUrl }}
+      database:
+        {{- if $pg.enabled }}
+        client: pg
+        connection:
+          host: {{ $pg.host }}
+          port: {{ $pg.port }}
+          user: {{ $pg.user }}
+          password: ${POSTGRES_PASSWORD}
+        {{- else }}
+        client: better-sqlite3
+        connection: ':memory:'
+        {{- end }}
+    {{- if .Values.auth.allowGuest }}
+    auth:
+      providers:
+        guest:
+          dangerouslyAllowOutsideDevelopment: true
+    {{- end }}
+    kubernetes:
+      serviceLocatorMethod:
+        type: multiTenant
+      clusterLocatorMethods:
+        - type: config
+          clusters:
+            - name: local
+              url: https://kubernetes.default.svc
+              authProvider: serviceAccount
+              caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    koptan:
+      {{- with .Values.koptan.namespace }}
+      namespace: {{ . }}
+      {{- end }}
+      agentKey: ${KOPTAN_AGENT_KEY}
+  {{- with .Values.appConfig }}
+  app-config.extra.yaml: |
+    {{- toYaml . | nindent 4 }}
+  {{- end }}

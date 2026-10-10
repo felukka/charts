@@ -1,0 +1,60 @@
+{{- if .Values.rbac.create }}
+# Permissions for the koptan-backend plugin, kept in sync with
+# config/rbac/backstage_role.yaml in koptan by hack/sync-chart.sh.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "koptan-ui.fullname" . }}
+  labels:
+    {{- include "koptan-ui.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - koptan.felukka.org
+    resources:
+      - services
+      - cis
+      - cds
+      - alerts
+      - selfservices
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+  - apiGroups:
+      - koptan.felukka.org
+    resources:
+      - services
+    verbs:
+      - patch
+  - apiGroups:
+      - koptan.felukka.org
+    resources:
+      - ciplugins
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - services/proxy
+    verbs:
+      - get
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+      - patch
+      - delete
+{{- end }}
