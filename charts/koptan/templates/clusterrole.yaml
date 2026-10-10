@@ -3,7 +3,7 @@ kind: ClusterRole
 metadata:
   name: {{ include "koptan.fullname" . }}-manager-role
   labels:
-  {{- include "koptan.labels" . | nindent 4 }}
+    {{- include "koptan.labels" . | nindent 4 }}
 rules:
   - apiGroups:
       - ""
@@ -23,6 +23,9 @@ rules:
     resources:
       - pods
     verbs:
+      - create
+      - delete
+      - deletecollection
       - get
       - list
       - watch
@@ -50,23 +53,33 @@ rules:
       - update
       - watch
   - apiGroups:
-      - batch
+      - koptan.felukka.org
     resources:
-      - jobs
+      - alerts
+      - ciplugins
     verbs:
-      - create
-      - delete
       - get
       - list
       - watch
   - apiGroups:
-      - koptan.felukka.sh
+      - koptan.felukka.org
     resources:
-      - dotnetapps
-      - goapps
-      - javaapps
-      - slipways
-      - voyages
+      - alerts/status
+      - cds/status
+      - ciplugins/status
+      - cis/status
+      - selfservices/status
+      - services/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - koptan.felukka.org
+    resources:
+      - cds
+      - cis
+      - services
     verbs:
       - create
       - delete
@@ -76,24 +89,21 @@ rules:
       - update
       - watch
   - apiGroups:
-      - koptan.felukka.sh
+      - koptan.felukka.org
     resources:
-      - dotnetapps/finalizers
-      - goapps/finalizers
-      - javaapps/finalizers
-      - slipways/finalizers
-      - voyages/finalizers
+      - cds/finalizers
+      - cis/finalizers
+      - selfservices/finalizers
+      - services/finalizers
     verbs:
       - update
   - apiGroups:
-      - koptan.felukka.sh
+      - koptan.felukka.org
     resources:
-      - dotnetapps/status
-      - goapps/status
-      - javaapps/status
-      - slipways/status
-      - voyages/status
+      - selfservices
     verbs:
       - get
+      - list
       - patch
       - update
+      - watch

@@ -4,29 +4,25 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: slipways.koptan.felukka.sh
+  name: cis.koptan.felukka.org
 spec:
-  group: koptan.felukka.sh
+  group: koptan.felukka.org
   names:
-    kind: Slipway
-    listKind: SlipwayList
-    plural: slipways
-    singular: slipway
+    kind: CI
+    listKind: CIList
+    plural: cis
+    singular: ci
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.message
-      name: Message
-      type: string
     - jsonPath: .status.latestImage
       name: Image
       type: string
     - jsonPath: .status.latestRevision
       name: Revision
-      priority: 1
       type: string
     - jsonPath: .status.buildCount
       name: Builds
@@ -34,7 +30,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha
+    name: v1
     schema:
       openAPIV3Schema:
         properties:
@@ -56,22 +52,19 @@ spec:
           metadata:
             type: object
           spec:
+            description: CISpec defines the desired state of a CI build.
             properties:
-              appRef:
-                properties:
-                  kind:
-                    enum:
-                    - GoApp
-                    - DotnetApp
-                    - JavaApp
-                    type: string
-                  name:
-                    minLength: 1
-                    type: string
-                required:
-                - kind
-                - name
-                type: object
+              contextDir:
+                description: ContextDir is the build context relative to the repository
+                  root.
+                maxLength: 250
+                pattern: ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$
+                type: string
+              dockerfileConfigMap:
+                description: |-
+                  DockerfileConfigMap holds the Dockerfile (key "Dockerfile") and,
+                  optionally, a default .dockerignore (key ".dockerignore").
+                type: string
               extraSteps:
                 items:
                   description: A single application container that you want to run
@@ -1593,10 +1586,21 @@ spec:
                   type: object
                 type: array
               image:
+                description: Image defines the target registry for the built image.
                 properties:
-                  creds:
+                  credentialsSecret:
+                    description: |-
+                      CredentialsSecret names a kubernetes.io/dockerconfigjson Secret used
+                      to push (and pull) the image.
+                    type: string
+                  loginSecret:
+                    description: |-
+                      Deprecated: use CredentialsSecret. When set, the operator converts it
+                      into a dockerconfigjson Secret named <ci>-registry.
                     properties:
                       password:
+                        description: base64 encoded secret
+                        format: byte
                         type: string
                       username:
                         type: string
@@ -1604,26 +1608,67 @@ spec:
                     - password
                     - username
                     type: object
-                  name:
-                    minLength: 1
-                    type: string
                   registry:
                     default: docker.io
                     minLength: 1
                     type: string
+                  repo:
+                    minLength: 1
+                    type: string
+                required:
+                - registry
+                - repo
+                type: object
+              plugins:
+                description: |-
+                  Plugins run, in order, after checkout and before build/push. The
+                  Service controller resolves them; the generation makes a plugin
+                  change rebuild.
+                items:
+                  description: CIPluginRef pins a CIPlugin at the generation the build
+                    should use.
+                  properties:
+                    generation:
+                      format: int64
+                      type: integer
+                    name:
+                      minLength: 1
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              revision:
+                description: Revision is the commit SHA to build; the Service controller
+                  sets it.
+                type: string
+              service:
+                description: Service references the Service CRD that provides the
+                  source repo.
+                properties:
+                  name:
+                    minLength: 1
+                    type: string
                 required:
                 - name
-                - registry
                 type: object
             required:
-            - appRef
             - image
+            - service
             type: object
           status:
+            description: CIStatus defines the observed state of a CI build.
             properties:
               buildCount:
                 format: int64
                 type: integer
+              buildPod:
+                description: BuildPod is the Pod running (or that ran) the latest
+                  build.
+                type: string
+              buildingRevision:
+                description: BuildingRevision is the revision of the build in BuildPod.
+                type: string
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current
@@ -1692,8 +1737,33 @@ spec:
                 type: string
               message:
                 type: string
+              observedGeneration:
+                description: ObservedGeneration is the spec generation of the latest
+                  build.
+                format: int64
+                type: integer
               phase:
                 type: string
+              pluginResults:
+                description: PluginResults are the plugin steps of the latest build,
+                  in order.
+                items:
+                  description: PluginResult is the outcome of one plugin step in the
+                    latest build.
+                  properties:
+                    message:
+                      type: string
+                    name:
+                      type: string
+                    phase:
+                      description: PluginPhase is the state of one plugin step in
+                        the latest build.
+                      type: string
+                  required:
+                  - name
+                  - phase
+                  type: object
+                type: array
             type: object
         required:
         - metadata
