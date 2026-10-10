@@ -1,0 +1,6 @@
+backstage:
+  rbac:
+    create: true
+    serviceAccount:
+      name: backstage
+      namespace: backstage

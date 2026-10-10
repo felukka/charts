@@ -1,4 +1,3 @@
-{{- $webhookCerts := and .Values.webhook.enabled .Values.certManager.enabled }}
 {{- $metricsCerts := and .Values.metrics.secure .Values.certManager.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -15,14 +14,28 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         {{- include "koptan.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+        {{- with .Values.podSecurityContext }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       serviceAccountName: {{ include "koptan.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 10
       containers:
       - name: manager
         command:
@@ -33,41 +46,46 @@ spec:
         {{- if .Values.metrics.secure }}
         - --metrics-bind-address=:{{ .Values.metrics.port }}
         {{- end }}
-        {{- if $webhookCerts }}
-        - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
-        {{- end }}
         {{- if $metricsCerts }}
         - --metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs
         {{- end }}
         image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
-        ports:
-        - name: http
-          containerPort: 8080
-          protocol: TCP
-        {{- if .Values.webhook.enabled }}
-        - name: webhook-server
-          containerPort: 9443
-          protocol: TCP
+        env:
+        # Derives each SelfService agent's API token; the Backstage backend
+        # needs the same value. Without it SelfServices are disabled.
+        - name: KOPTAN_AGENT_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.agent.keySecret.name }}
+              key: {{ .Values.agent.keySecret.key }}
+              optional: true
+        - name: KOPTAN_AGENT_IMAGE
+          value: {{ .Values.agent.image | quote }}
+        - name: KOPTAN_DEFAULT_REGISTRY
+          value: {{ .Values.defaultRegistry | quote }}
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- if .Values.metrics.secure }}
+        ports:
         - name: metrics
           containerPort: {{ .Values.metrics.port }}
           protocol: TCP
         {{- end }}
+        {{- with .Values.resources }}
         resources:
-          limits:
-            cpu: 500m
-            memory: 128Mi
-          requests:
-            cpu: 10m
-            memory: 64Mi
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         securityContext:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
           capabilities:
             drop:
             - ALL
+          {{- with .Values.securityContext }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         livenessProbe:
           httpGet:
             path: /healthz
@@ -80,37 +98,47 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        {{- if or $webhookCerts $metricsCerts }}
         volumeMounts:
-          {{- if $webhookCerts }}
-          - mountPath: /tmp/k8s-webhook-server/serving-certs
-            name: webhook-certs
-            readOnly: true
-          {{- end }}
-          {{- if $metricsCerts }}
-          - mountPath: /tmp/k8s-metrics-server/metrics-certs
-            name: metrics-certs
-            readOnly: true
-          {{- end }}
-        {{- end }}
-      {{- if or $webhookCerts $metricsCerts }}
-      volumes:
-        {{- if $webhookCerts }}
-        - name: webhook-certs
-          secret:
-            secretName: webhook-server-cert
-        {{- end }}
+        # Discovery clones repositories into /tmp; the root stays read-only.
+        - name: tmp
+          mountPath: /tmp
         {{- if $metricsCerts }}
         - name: metrics-certs
-          secret:
-            secretName: metrics-server-cert
-            optional: false
-            items:
-              - key: ca.crt
-                path: ca.crt
-              - key: tls.crt
-                path: tls.crt
-              - key: tls.key
-                path: tls.key
+          mountPath: /tmp/k8s-metrics-server/metrics-certs
+          readOnly: true
         {{- end }}
+        {{- with .Values.volumeMounts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: {{ .Values.tmpVolume.sizeLimit }}
+      {{- if $metricsCerts }}
+      - name: metrics-certs
+        secret:
+          secretName: metrics-server-cert
+          optional: false
+          items:
+            - key: ca.crt
+              path: ca.crt
+            - key: tls.crt
+              path: tls.crt
+            - key: tls.key
+              path: tls.key
+      {{- end }}
+      {{- with .Values.volumes }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
       {{- end }}

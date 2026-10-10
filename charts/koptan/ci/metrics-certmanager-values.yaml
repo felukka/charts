@@ -1,0 +1,4 @@
+certManager:
+  enabled: true
+metrics:
+  secure: true
