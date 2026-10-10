@@ -1,0 +1,88 @@
+---
+# WARNING: the UI uses guest sign-in and allows every action. Anyone who can
+# reach it can deploy services and prompt SelfService agents. Keep the Ingress
+# off (use port-forward) or put it behind your own authentication.
+
+replicaCount: 1
+image:
+  repository: ghcr.io/felukka/koptan-ui
+  # Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+nameOverride: ''
+fullnameOverride: ''
+
+# The URL browsers use to reach the UI (app.baseUrl, backend.baseUrl and CORS origin).
+baseUrl: http://localhost:7007
+
+koptan:
+  # Limit the UI to one namespace; empty means all namespaces.
+  namespace: ""
+
+# Must hold the same key as the operator's KOPTAN_AGENT_KEY for the Self Service
+# page to reach agents. Install into the operator namespace to share its Secret.
+agentKey:
+  secret:
+    name: koptan-agent-key
+    key: key
+
+database:
+  # Without Postgres the UI uses an in-memory SQLite database. Koptan keeps its
+  # data in the cluster, so only UI state (settings, notifications) is lost on restart.
+  postgres:
+    enabled: false
+    host: ""
+    port: 5432
+    user: backstage
+    # Secret with the password, in key passwordKey.
+    existingSecret: ""
+    passwordKey: password
+
+service:
+  type: ClusterIP
+  port: 7007
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: koptan.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# ClusterRole for the UI's service account (config/rbac/backstage_role.yaml in koptan).
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+auth:
+  # The UI only has guest sign-in, which Backstage refuses in a production
+  # build unless this is set. Without it nobody can sign in. Set it to false
+  # once you configure a real provider through appConfig.
+  allowGuest: true
+
+# Extra Backstage configuration, merged last (e.g. auth providers).
+appConfig: {}
+
+extraEnv: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,8 @@
+baseUrl: https://koptan.example.com
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    - secretName: koptan-ui-tls
+      hosts:
+        - koptan.example.com

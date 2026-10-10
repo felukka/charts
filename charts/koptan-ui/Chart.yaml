@@ -1,0 +1,8 @@
+---
+apiVersion: v2
+name: koptan-ui
+description: Koptan UI, the Backstage app for Koptan pipelines, self-service, scans and alerts
+type: application
+version: 0.1.0
+appVersion: 0.2.0
+icon: https://helm.sh/img/helm.svg

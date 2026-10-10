@@ -1,0 +1,15 @@
+Koptan UI {{ .Chart.AppVersion }} is installed in namespace {{ .Release.Namespace }}.
+
+WARNING: the UI uses guest sign-in and allows every action. Anyone who can
+reach it can deploy services and prompt SelfService agents.
+{{- if and .Values.ingress.enabled .Values.auth.allowGuest }}
+The Ingress is ENABLED with guest sign-in: make sure it sits behind your own authentication.
+{{- end }}
+
+1. Open the UI:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "koptan-ui.fullname" . }} 7007:{{ .Values.service.port }}
+  then browse to {{ .Values.baseUrl }}
+
+2. The Self Service page needs the operator's agent key in Secret
+   {{ .Values.agentKey.secret.name }} in namespace {{ .Release.Namespace }}.
+   Install the UI into the operator namespace to share it.
