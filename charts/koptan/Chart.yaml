@@ -1,8 +1,8 @@
 ---
 apiVersion: v2
 name: koptan
-description: A Helm chart for Kubernetes
+description: Koptan operator for CI/CD, CI plugins, alerts and AI self-service on Kubernetes
 type: application
-version: 0.1.0
-appVersion: 0.1.0
+version: 0.2.0
+appVersion: 0.2.0
 icon: https://helm.sh/img/helm.svg

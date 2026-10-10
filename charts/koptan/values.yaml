@@ -3,7 +3,8 @@ replicaCount: 1
 controller:
   image:
     repository: ghcr.io/felukka/koptan
-    tag: 0.1.0
+    # Defaults to the chart appVersion.
+    tag: ""
     pullPolicy: IfNotPresent
 imagePullSecrets: []
 nameOverride: ''
@@ -13,56 +14,45 @@ serviceAccount:
   automount: true
   annotations: {}
   name: controller-manager
+
+# Registry used when a Service sets no spec.image.registry.
+defaultRegistry: docker.io
+
+# SelfService agent sessions.
+agent:
+  image: ghcr.io/felukka/koptan-agent:latest
+  # Secret holding the key that derives each agent's API token. The Backstage
+  # backend needs the same value. The Secret is optional; without it
+  # SelfServices are disabled.
+  keySecret:
+    name: koptan-agent-key
+    key: key
+
+# Discovery clones repositories into /tmp; the root filesystem stays read-only.
+tmpVolume:
+  sizeLimit: 2Gi
+
+# Extra environment variables for the manager container.
+extraEnv: []
+
 podAnnotations: {}
 podLabels: {}
+# Merged into the pod securityContext (runAsNonRoot and RuntimeDefault seccomp are always set).
 podSecurityContext: {}
-  # fsGroup: 2000
+# Merged into the container securityContext (read-only root, no privilege escalation, all capabilities dropped).
 securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
-service:
-  type: ClusterIP
-  port: 80
-resources: {}
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
-livenessProbe:
-  httpGet:
-    path: /
-    port: http
-readinessProbe:
-  httpGet:
-    path: /
-    port: http
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 100
-  targetCPUUtilizationPercentage: 80
-  # targetMemoryUtilizationPercentage: 80
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
 volumes: []
-  # - name: foo
-  #   secret:
-  #     secretName: mysecret
-  #     optional: false
 volumeMounts: []
-  # - name: foo
-  #   mountPath: "/etc/foo"
-  #   readOnly: true
 nodeSelector: {}
 tolerations: []
 affinity: {}
-
-webhook:
-  enabled: false
 
 certManager:
   # Requires cert-manager CRDs to be installed in the cluster.
@@ -70,5 +60,16 @@ certManager:
   enabled: false
 
 metrics:
+  # Serve metrics over HTTPS on metrics.port. With certManager.enabled the
+  # endpoint gets a cert-manager certificate, a Service and RBAC.
   secure: false
   port: 8443
+
+# RBAC for the Backstage backend plugin (koptan-backend).
+backstage:
+  rbac:
+    create: false
+    # Bind the role to this service account when name is set.
+    serviceAccount:
+      name: ""
+      namespace: ""

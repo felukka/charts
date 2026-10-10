@@ -4,27 +4,42 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: voyages.koptan.felukka.sh
+  name: services.koptan.felukka.org
 spec:
-  group: koptan.felukka.sh
+  group: koptan.felukka.org
   names:
-    kind: Voyage
-    listKind: VoyageList
-    plural: voyages
-    singular: voyage
+    kind: Service
+    listKind: ServiceList
+    plural: services
+    shortNames:
+    - ksvc
+    singular: service
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.phase
       name: Phase
       type: string
-    - jsonPath: .status.deployedImage
-      name: Image
+    - jsonPath: .status.serviceType
+      name: Language
       type: string
+    - jsonPath: .status.latestRevision
+      name: Revision
+      type: string
+    - jsonPath: .status.ciRef
+      name: CI
+      type: string
+    - jsonPath: .status.cdRef
+      name: CD
+      type: string
+    - jsonPath: .status.lastPushDetected
+      name: LastPush
+      priority: 1
+      type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v1alpha
+    name: v1
     schema:
       openAPIV3Schema:
         properties:
@@ -47,6 +62,39 @@ spec:
             type: object
           spec:
             properties:
+              build:
+                description: BuildSpec tunes how the image is built.
+                properties:
+                  contextDir:
+                    description: |-
+                      ContextDir is the build context, relative to the repository root
+                      (for a service inside a monorepo). Empty means the root.
+                    maxLength: 250
+                    pattern: ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$
+                    type: string
+                  dockerfilePath:
+                    description: |-
+                      DockerfilePath is the repository's Dockerfile, relative to the
+                      repository root. Empty means Dockerfile, Containerfile, docker/Dockerfile
+                      or build/Dockerfile in the context, else a generated one.
+                    maxLength: 250
+                    pattern: ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$
+                    type: string
+                  language:
+                    description: Language skips detection and generates the Dockerfile
+                      for this stack.
+                    enum:
+                    - go
+                    - rust
+                    - java
+                    - dotnet
+                    - python
+                    - ruby
+                    - php
+                    - node
+                    - static
+                    type: string
+                type: object
               env:
                 items:
                   description: EnvVar represents an environment variable present in
@@ -203,69 +251,107 @@ spec:
                   - name
                   type: object
                 type: array
-              healthCheck:
+              image:
+                description: ImageSpec says where the built image is pushed.
                 properties:
-                  initialDelaySeconds:
-                    default: 30
-                    format: int32
-                    type: integer
-                  path:
+                  credentialsSecret:
+                    description: |-
+                      CredentialsSecret names a kubernetes.io/dockerconfigjson Secret used
+                      to push the image and, on the Deployment, to pull it.
                     type: string
-                  periodSeconds:
-                    default: 10
-                    format: int32
-                    type: integer
-                  port:
-                    format: int32
-                    type: integer
+                  registry:
+                    description: |-
+                      Registry host, e.g. ghcr.io. Defaults to the operator's
+                      --default-registry.
+                    type: string
+                  repo:
+                    description: |-
+                      Repo is the image repository inside the registry. Defaults to the
+                      Service name.
+                    type: string
                 type: object
+              plugins:
+                description: |-
+                  Plugins are CIPlugins (in this namespace) that run after checkout and
+                  before build/push. Plugins can also attach themselves to this Service
+                  through their targetRefs or selector.
+                items:
+                  description: PluginRef names a CIPlugin in the Service's namespace.
+                  properties:
+                    name:
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                  required:
+                  - name
+                  type: object
+                maxItems: 32
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
               port:
+                description: Port the application listens on; also exported as $PORT.
                 format: int32
+                maximum: 65535
+                minimum: 1
                 type: integer
               replicas:
-                default: 1
                 format: int32
+                minimum: 0
                 type: integer
-              resources:
+              source:
                 properties:
-                  cpuLimit:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  cpuRequest:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  memoryLimit:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  memoryRequest:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                type: object
-              slipwayRef:
-                properties:
-                  name:
+                  repo:
+                    minLength: 1
                     type: string
+                  revision:
+                    description: |-
+                      Revision is a branch, tag or full commit SHA. Empty means the
+                      repository's default branch (remote HEAD).
+                    maxLength: 250
+                    pattern: ^([A-Za-z0-9._/][A-Za-z0-9._/-]*)?$
+                    type: string
+                  secretRef:
+                    description: SecretKeySelector selects a key of a Secret.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
                 required:
-                - name
+                - repo
                 type: object
             required:
-            - port
-            - slipwayRef
+            - source
             type: object
           status:
             properties:
+              cdRef:
+                description: CDRef is the name of the active CD CRD managing deployment
+                  for this Service.
+                type: string
+              ciRef:
+                description: CIRef is the name of the active CI CRD managing builds
+                  for this Service.
+                type: string
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current
@@ -322,13 +408,67 @@ spec:
                   - type
                   type: object
                 type: array
-              deployedImage:
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              detected:
+                description: Detected describes the stack discovery found.
+                properties:
+                  entrypoint:
+                    type: string
+                  framework:
+                    type: string
+                  language:
+                    type: string
+                  packageManager:
+                    type: string
+                  version:
+                    type: string
+                type: object
+              dockerfileConfigMap:
+                description: DockerfileConfigMap holds the Dockerfile CI builds with.
                 type: string
+              dockerfileSource:
+                description: |-
+                  DockerfileSource says where the Dockerfile came from: the repository
+                  or a template generated from the detected stack.
+                enum:
+                - repo
+                - template
+                type: string
+              error:
+                type: string
+              lastPushDetected:
+                description: LastPushDetected is the time the controller last detected
+                  a new commit.
+                format: date-time
+                type: string
+              latestRevision:
+                description: LatestRevision is the SHA of the last processed commit
+                  from the source repo.
+                type: string
+              message:
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the spec generation the last discovery
+                  used.
+                format: int64
+                type: integer
               phase:
+                enum:
+                - Pending
+                - Discovering
+                - Building
+                - Ready
+                - Failed
+                type: string
+              serviceType:
+                description: |-
+                  ServiceType is the detected language, or "dockerfile" when only the
+                  repository's own Dockerfile was found.
                 type: string
             type: object
         required:
-        - metadata
         - spec
         type: object
     served: true

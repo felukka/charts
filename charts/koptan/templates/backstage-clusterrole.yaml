@@ -1,0 +1,81 @@
+{{- if .Values.backstage.rbac.create }}
+# Permissions for the Backstage backend plugin (koptan-backend). It lists every
+# Koptan resource, creates Services, Alerts and SelfServices from the UI, stores
+# their credentials as Secrets, reaches SelfService agents through the
+# services/proxy subresource and reads node status for the Bay.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "koptan.fullname" . }}-backstage-role
+  labels:
+    {{- include "koptan.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - koptan.felukka.org
+    resources:
+      - services
+      - cis
+      - cds
+      - alerts
+      - selfservices
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+  - apiGroups:
+      - koptan.felukka.org
+    resources:
+      - services
+    verbs:
+      - patch
+  - apiGroups:
+      - koptan.felukka.org
+    resources:
+      - ciplugins
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - services/proxy
+    verbs:
+      - get
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+      - patch
+      - delete
+{{- with .Values.backstage.rbac.serviceAccount }}
+{{- if .name }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "koptan.fullname" $ }}-backstage-rolebinding
+  labels:
+    {{- include "koptan.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "koptan.fullname" $ }}-backstage-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ .name }}
+    namespace: {{ .namespace | default $.Release.Namespace }}
+{{- end }}
+{{- end }}
+{{- end }}
