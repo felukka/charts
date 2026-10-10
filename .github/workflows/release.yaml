@@ -52,6 +52,8 @@ jobs:
               helm package "$dir" --destination .chart-release/
             fi
           done
+      # Charts live under ghcr.io/<owner>/charts/<name>, apart from the images
+      # (ghcr.io/<owner>/<name>) so chart and image tags never collide.
       # A chart version is published once; re-running a release never overwrites it.
       - name: Push charts to GHCR
         run: |
@@ -59,11 +61,28 @@ jobs:
           for pkg in .chart-release/*.tgz; do
             name=$(tar -xzOf "$pkg" --wildcards '*/Chart.yaml' | yq '.name')
             version=$(tar -xzOf "$pkg" --wildcards '*/Chart.yaml' | yq '.version')
-            if helm show chart "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/${name}" --version "$version" >/dev/null 2>&1; then
+            if helm show chart "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts/${name}" --version "$version" >/dev/null 2>&1; then
               echo "${name} ${version} is already published, skipping"
               continue
             fi
-            helm push "${pkg}" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}"
+            helm push "${pkg}" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts"
+          done
+      # Pages is replaced on every deploy, so fetch the packages already published
+      # and merge the old index; otherwise older versions disappear from the repo.
+      - name: Fetch published packages
+        run: |
+          set -euo pipefail
+          if ! curl -fsSL "${REPO_URL}/index.yaml" -o old-index.yaml; then
+            rm -f old-index.yaml
+            echo "No published index yet."
+            exit 0
+          fi
+          yq '.entries[][].urls[0]' old-index.yaml | while read -r url; do
+            case "$url" in
+              http*) ;;
+              *) url="${REPO_URL}/${url}" ;;
+            esac
+            curl -fsSL "$url" -o ".chart-release/$(basename "$url")"
           done
       # Pages is replaced on every deploy, so fetch the packages already published
       # and merge the old index; otherwise older versions disappear from the repo.
