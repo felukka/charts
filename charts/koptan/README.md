@@ -139,3 +139,24 @@ helm uninstall koptan -n koptan-system
 ```
 
 The command removes all the Kubernetes components associated with the chart and deletes the release.
+
+## Upgrading to Koptan 0.1.0
+
+Koptan 0.1.0 only uses Secrets labelled `koptan.felukka.org/credentials=true`: git tokens, registry credentials, plugin tokens, Secrets in a Service's `env`, and SelfService Secrets. Label yours before upgrading:
+
+```bash
+kubectl -n <namespace> label secret <name> koptan.felukka.org/credentials=true
+```
+
+`allowUnlabeledSecrets: true` restores the old behaviour while you migrate. It lets anyone who can create a Service send any Secret in its namespace to a host of their choice, so turn it off again afterwards.
+
+## Insecure registries
+
+To build with a registry that has no TLS or a self-signed certificate, such as an in-cluster `registry:2`, list its host:
+
+```yaml
+insecureRegistries:
+  - registry.registry.svc:5000
+```
+
+Only those hosts skip TLS verification. The nodes' container runtime must trust the registry too, so it can pull the built image.

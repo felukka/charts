@@ -9,20 +9,47 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-24.04
+    outputs:
+      charts: ${{ steps.changed.outputs.charts }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Only the charts this push changed are linted and packaged; older
+      # versions of every chart come back from the published index below.
+      - name: Changed charts
+        id: changed
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            dirs=$(ls -d charts/*/)
+          else
+            dirs=$(git diff --name-only "$BEFORE" "$GITHUB_SHA" -- charts/ | cut -d/ -f1,2 | sort -u)
+          fi
+          charts=""
+          for dir in $dirs; do
+            dir="${dir%/}"
+            if [ -f "$dir/Chart.yaml" ]; then
+              charts="$charts $dir"
+            fi
+          done
+          echo "Changed charts:${charts:- none}"
+          echo "charts=${charts# }" >> "$GITHUB_OUTPUT"
       - name: Install Helm
         uses: azure/setup-helm@v4
       - name: Lint Charts
+        env:
+          CHARTS: ${{ steps.changed.outputs.charts }}
         run: |
-          for dir in charts/*; do
-            if [ -d "$dir" ]; then
-              helm lint "$dir"
-            fi
+          for dir in $CHARTS; do
+            helm lint "$dir"
           done
   release:
     needs: lint
+    if: needs.lint.outputs.charts != ''
     permissions:
       contents: read
       packages: write
@@ -45,12 +72,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Setup Chart Release Directory
+        env:
+          CHARTS: ${{ needs.lint.outputs.charts }}
         run: |
           mkdir -p .chart-release
-          for dir in charts/*; do
-            if [ -d "$dir" ]; then
-              helm package "$dir" --destination .chart-release/
-            fi
+          for dir in $CHARTS; do
+            helm package "$dir" --destination .chart-release/
           done
       # Charts live under ghcr.io/<owner>/charts/<name>, apart from the images
       # (ghcr.io/<owner>/<name>) so chart and image tags never collide.
@@ -66,23 +93,6 @@ jobs:
               continue
             fi
             helm push "${pkg}" "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER}/charts"
-          done
-      # Pages is replaced on every deploy, so fetch the packages already published
-      # and merge the old index; otherwise older versions disappear from the repo.
-      - name: Fetch published packages
-        run: |
-          set -euo pipefail
-          if ! curl -fsSL "${REPO_URL}/index.yaml" -o old-index.yaml; then
-            rm -f old-index.yaml
-            echo "No published index yet."
-            exit 0
-          fi
-          yq '.entries[][].urls[0]' old-index.yaml | while read -r url; do
-            case "$url" in
-              http*) ;;
-              *) url="${REPO_URL}/${url}" ;;
-            esac
-            curl -fsSL "$url" -o ".chart-release/$(basename "$url")"
           done
       # Pages is replaced on every deploy, so fetch the packages already published
       # and merge the old index; otherwise older versions disappear from the repo.

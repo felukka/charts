@@ -1,5 +1,8 @@
 ---
 name: Pull Request
+# No paths filter: "Validate PR Metadata" and "Helm Validate" are required
+# checks, so they must report on every PR (Helm Validate is skipped, which
+# counts as passing, when no chart changed).
 on:
   pull_request:
     branches:
@@ -9,8 +12,6 @@ on:
       - reopened
       - synchronize
       - edited
-    paths:
-      - charts/**
 permissions:
   contents: read
   pull-requests: read
@@ -21,45 +22,57 @@ jobs:
     name: Validate PR Metadata
     runs-on: ubuntu-24.04
     outputs:
-      changed_chart: ${{ steps.detect.outputs.changed_chart }}
+      changed_charts: ${{ steps.detect.outputs.changed_charts }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
+      # A PR may change several charts; its title must start with one tag per
+      # changed chart, e.g. "[koptan][koptan-ui] sync with koptan 0.1.0".
       - name: Detect Changes and Validate Title
         id: detect
         env:
           BASE_REF: ${{ github.base_ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          CHANGED_FILES=$(git diff --name-only origin/$BASE_REF HEAD | grep '^charts/' || true)
-          if [ -z "$CHANGED_FILES" ]; then
+          set -euo pipefail
+          CHARTS=""
+          for dir in $(git diff --name-only "origin/$BASE_REF" HEAD -- charts/ | cut -d/ -f1,2 | sort -u); do
+            # Only chart directories that still exist (not deleted charts or files under charts/).
+            if [ -f "$dir/Chart.yaml" ]; then
+              CHARTS="$CHARTS $dir"
+            fi
+          done
+          CHARTS="${CHARTS# }"
+          if [ -z "$CHARTS" ]; then
             echo "No charts changed."
             exit 0
           fi
-          CHANGED_CHARTS=$(echo "$CHANGED_FILES" | cut -d'/' -f1,2 | sort -u)
-          CHART_COUNT=$(echo "$CHANGED_CHARTS" | wc -w)
-          if [ "$CHART_COUNT" -gt 1 ]; then
-            echo "::error::Multiple charts changed ($CHART_COUNT). Please create separate PRs for each chart."
-            echo "Changed charts: $CHANGED_CHARTS"
+          TAGS=$(grep -oE '^(\[[A-Za-z0-9._-]+\])+' <<<"$PR_TITLE" | grep -oE '[A-Za-z0-9._-]+' || true)
+          MISSING=""
+          for dir in $CHARTS; do
+            name=$(basename "$dir")
+            if ! grep -qxF "$name" <<<"$TAGS"; then
+              MISSING="${MISSING}[$name]"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::PR title must start with a tag per changed chart; missing $MISSING (changed: $CHARTS)."
             exit 1
           fi
-          CHART_PATH="$CHANGED_CHARTS"
-          CHART_NAME=$(basename "$CHART_PATH")
-          if [[ "${PR_TITLE#\[$CHART_NAME\] }" == "$PR_TITLE" ]]; then
-            echo "::error::PR title must start with '[$CHART_NAME] '."
-            exit 1
-          fi
-          echo "changed_chart=$CHART_PATH" >> "$GITHUB_OUTPUT"
+          echo "Changed charts: $CHARTS"
+          echo "changed_charts=$CHARTS" >> "$GITHUB_OUTPUT"
+  # One job with a stable name (a required check) that validates every
+  # changed chart.
   helm-validate:
     name: Helm Validate
     needs: validate-metadata
-    if: needs.validate-metadata.outputs.changed_chart != ''
+    if: needs.validate-metadata.outputs.changed_charts != ''
     runs-on: ubuntu-24.04
     env:
-      CHART_PATH: ${{ needs.validate-metadata.outputs.changed_chart }}
+      CHARTS: ${{ needs.validate-metadata.outputs.changed_charts }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -76,41 +89,49 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          NEW_VERSION=$(yq '.version' "$CHART_PATH/Chart.yaml")
-          if ! git cat-file -e "origin/$BASE_REF:$CHART_PATH/Chart.yaml" 2>/dev/null; then
-            echo "New chart $CHART_PATH at version $NEW_VERSION."
-            exit 0
-          fi
-          OLD_VERSION=$(git show "origin/$BASE_REF:$CHART_PATH/Chart.yaml" | yq '.version')
-          if [ "$NEW_VERSION" = "$OLD_VERSION" ]; then
-            echo "::error file=$CHART_PATH/Chart.yaml::Chart version $OLD_VERSION is unchanged. Bump 'version' in Chart.yaml."
-            exit 1
-          fi
-          if [ "$(printf '%s\n%s\n' "$OLD_VERSION" "$NEW_VERSION" | sort -V | tail -n1)" != "$NEW_VERSION" ]; then
-            echo "::error file=$CHART_PATH/Chart.yaml::Chart version $NEW_VERSION is lower than $OLD_VERSION."
-            exit 1
-          fi
-          echo "Chart version $OLD_VERSION -> $NEW_VERSION"
+          set -euo pipefail
+          for CHART_PATH in $CHARTS; do
+            NEW_VERSION=$(yq '.version' "$CHART_PATH/Chart.yaml")
+            if ! git cat-file -e "origin/$BASE_REF:$CHART_PATH/Chart.yaml" 2>/dev/null; then
+              echo "New chart $CHART_PATH at version $NEW_VERSION."
+              continue
+            fi
+            OLD_VERSION=$(git show "origin/$BASE_REF:$CHART_PATH/Chart.yaml" | yq '.version')
+            if [ "$NEW_VERSION" = "$OLD_VERSION" ]; then
+              echo "::error file=$CHART_PATH/Chart.yaml::Chart version $OLD_VERSION is unchanged. Bump 'version' in Chart.yaml."
+              exit 1
+            fi
+            if [ "$(printf '%s\n%s\n' "$OLD_VERSION" "$NEW_VERSION" | sort -V | tail -n1)" != "$NEW_VERSION" ]; then
+              echo "::error file=$CHART_PATH/Chart.yaml::Chart version $NEW_VERSION is lower than $OLD_VERSION."
+              exit 1
+            fi
+            echo "$CHART_PATH: chart version $OLD_VERSION -> $NEW_VERSION"
+          done
       - name: Lint and validate each value set
         run: |
           set -euo pipefail
           shopt -s nullglob
-          VALUE_FILES=("$CHART_PATH"/ci/*-values.yaml)
-          if [ ${#VALUE_FILES[@]} -eq 0 ]; then
-            VALUE_FILES=("")
-          fi
-          for values in "${VALUE_FILES[@]}"; do
-            args=()
-            if [ -n "$values" ]; then
-              args=(-f "$values")
+          for CHART_PATH in $CHARTS; do
+            VALUE_FILES=("$CHART_PATH"/ci/*-values.yaml)
+            if [ ${#VALUE_FILES[@]} -eq 0 ]; then
+              VALUE_FILES=("")
             fi
-            echo "::group::${values:-default values}"
-            helm lint "$CHART_PATH" "${args[@]}"
-            helm template test-release "$CHART_PATH" --include-crds "${args[@]}" \
-              | kubeconform -strict -ignore-missing-schemas -summary
-            echo "::endgroup::"
+            for values in "${VALUE_FILES[@]}"; do
+              args=()
+              if [ -n "$values" ]; then
+                args=(-f "$values")
+              fi
+              echo "::group::$CHART_PATH ${values:-default values}"
+              helm lint "$CHART_PATH" "${args[@]}"
+              helm template test-release "$CHART_PATH" --include-crds "${args[@]}" \
+                | kubeconform -strict -ignore-missing-schemas -summary
+              echo "::endgroup::"
+            done
           done
       - name: Run helm install (dry-run)
         run: |-
-          echo "Validating install for $CHART_PATH"
-          helm install test-release "$CHART_PATH" --dry-run=client --debug
+          set -euo pipefail
+          for CHART_PATH in $CHARTS; do
+            echo "Validating install for $CHART_PATH"
+            helm install test-release "$CHART_PATH" --dry-run=client --debug
+          done
