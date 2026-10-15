@@ -64,6 +64,12 @@ spec:
           value: {{ .Values.agent.image | quote }}
         - name: KOPTAN_DEFAULT_REGISTRY
           value: {{ .Values.defaultRegistry | quote }}
+        - name: KOPTAN_ALLOW_UNLABELED_SECRETS
+          value: {{ .Values.allowUnlabeledSecrets | quote }}
+        {{- with .Values.insecureRegistries }}
+        - name: KOPTAN_INSECURE_REGISTRIES
+          value: {{ join "," . | quote }}
+        {{- end }}
         {{- with .Values.extraEnv }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

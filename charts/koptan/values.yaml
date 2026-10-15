@@ -18,6 +18,19 @@ serviceAccount:
 # Registry used when a Service sets no spec.image.registry.
 defaultRegistry: docker.io
 
+# Koptan resources may only use Secrets labelled
+# koptan.felukka.org/credentials=true. Setting this to true accepts any
+# Secret, which lets whoever can create a Service send any Secret in its
+# namespace to a host of their choice. Only for migrating old installs.
+allowUnlabeledSecrets: false
+
+# Registry hosts (host or host:port) that builds may pull from and push to
+# over plain HTTP or with an untrusted certificate, e.g. an in-cluster
+# registry:2. Every other registry keeps TLS verification.
+# insecureRegistries:
+#   - registry.registry.svc:5000
+insecureRegistries: []
+
 # SelfService agent sessions.
 agent:
   image: ghcr.io/felukka/koptan-agent:latest
