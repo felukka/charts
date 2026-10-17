@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - charts/**
+  # Manual runs release every chart again (published versions are skipped)
+  # and redeploy Pages, e.g. after changing the homepage.
+  workflow_dispatch:
 jobs:
   lint:
     runs-on: ubuntu-24.04
@@ -121,6 +124,7 @@ jobs:
       - name: Prepare Pages directory
         run: |
           cp README.md .chart-release/
+          .github/scripts/index-html.sh .chart-release/index.yaml > .chart-release/index.html
           echo "charts.felukka.org" > .chart-release/CNAME
       - name: Setup Pages
         uses: actions/configure-pages@v4
